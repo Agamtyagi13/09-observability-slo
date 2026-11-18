@@ -1,0 +1,39 @@
+# Demo notification receiver. Replace with PagerDuty/Slack/email receivers in alertmanager config for real use.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-sink
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: alert-sink}
+  template:
+    metadata:
+      labels: {app: alert-sink}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001}
+      containers:
+        - name: alert-sink
+          image: shop-api:0.1.0
+          imagePullPolicy: IfNotPresent
+          command: ["python", "alert_sink.py"]
+          ports:
+            - {name: http, containerPort: 8080}
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-sink
+  namespace: observability
+spec:
+  selector: {app: alert-sink}
+  ports:
+    - {name: http, port: 8080, targetPort: http}

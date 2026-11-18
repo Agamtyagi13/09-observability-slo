@@ -1,0 +1,20 @@
+# Scrapes (a) the app metrics the collector re-exposes on :8889 and (b) the collector's own health on :8888.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: slo-platform
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opentelemetry-collector
+  namespaceSelector:
+    matchNames: [observability]
+  endpoints:
+    - port: prom-exporter
+      interval: 15s
+      honorLabels: true
+    - port: metrics
+      interval: 30s

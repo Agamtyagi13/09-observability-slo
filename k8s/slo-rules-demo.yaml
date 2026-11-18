@@ -1,0 +1,137 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: shop-api-slo
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: slo-platform
+    slo-profile: demo
+spec:
+  groups:
+  - name: shop-api-slo-recording
+    interval: 30s
+    rules:
+    - record: slo:sli_error:ratio_rate1m
+      expr: (sum(rate(app_requests_total{service_name="shop-api",route!="/healthz",code=~"5.."}[1m])) or vector(0)) / sum(rate(app_requests_total{service_name="shop-api",route!="/healthz"}[1m]))
+      labels:
+        service: shop-api
+        slo: availability
+    - record: slo:sli_error:ratio_rate5m
+      expr: (sum(rate(app_requests_total{service_name="shop-api",route!="/healthz",code=~"5.."}[5m])) or vector(0)) / sum(rate(app_requests_total{service_name="shop-api",route!="/healthz"}[5m]))
+      labels:
+        service: shop-api
+        slo: availability
+    - record: slo:sli_error:ratio_rate10m
+      expr: (sum(rate(app_requests_total{service_name="shop-api",route!="/healthz",code=~"5.."}[10m])) or vector(0)) / sum(rate(app_requests_total{service_name="shop-api",route!="/healthz"}[10m]))
+      labels:
+        service: shop-api
+        slo: availability
+    - record: slo:sli_error:ratio_rate30m
+      expr: (sum(rate(app_requests_total{service_name="shop-api",route!="/healthz",code=~"5.."}[30m])) or vector(0)) / sum(rate(app_requests_total{service_name="shop-api",route!="/healthz"}[30m]))
+      labels:
+        service: shop-api
+        slo: availability
+    - record: slo:sli_error:ratio_rate30d
+      expr: (sum(rate(app_requests_total{service_name="shop-api",route!="/healthz",code=~"5.."}[30d])) or vector(0)) / sum(rate(app_requests_total{service_name="shop-api",route!="/healthz"}[30d]))
+      labels:
+        service: shop-api
+        slo: availability
+    - record: slo:error_budget_remaining:ratio
+      expr: 1 - (slo:sli_error:ratio_rate30d{slo="availability",service="shop-api"} / 0.001)
+      labels:
+        service: shop-api
+        slo: availability
+    - record: slo:objective:ratio
+      expr: vector(0.999)
+      labels:
+        service: shop-api
+        slo: availability
+    - record: slo:sli_error:ratio_rate1m
+      expr: 1 - (sum(rate(app_request_duration_seconds_bucket{service_name="shop-api",route!="/healthz",le="0.5"}[1m])) / sum(rate(app_request_duration_seconds_count{service_name="shop-api",route!="/healthz"}[1m])))
+      labels:
+        service: shop-api
+        slo: latency
+    - record: slo:sli_error:ratio_rate5m
+      expr: 1 - (sum(rate(app_request_duration_seconds_bucket{service_name="shop-api",route!="/healthz",le="0.5"}[5m])) / sum(rate(app_request_duration_seconds_count{service_name="shop-api",route!="/healthz"}[5m])))
+      labels:
+        service: shop-api
+        slo: latency
+    - record: slo:sli_error:ratio_rate10m
+      expr: 1 - (sum(rate(app_request_duration_seconds_bucket{service_name="shop-api",route!="/healthz",le="0.5"}[10m])) / sum(rate(app_request_duration_seconds_count{service_name="shop-api",route!="/healthz"}[10m])))
+      labels:
+        service: shop-api
+        slo: latency
+    - record: slo:sli_error:ratio_rate30m
+      expr: 1 - (sum(rate(app_request_duration_seconds_bucket{service_name="shop-api",route!="/healthz",le="0.5"}[30m])) / sum(rate(app_request_duration_seconds_count{service_name="shop-api",route!="/healthz"}[30m])))
+      labels:
+        service: shop-api
+        slo: latency
+    - record: slo:sli_error:ratio_rate30d
+      expr: 1 - (sum(rate(app_request_duration_seconds_bucket{service_name="shop-api",route!="/healthz",le="0.5"}[30d])) / sum(rate(app_request_duration_seconds_count{service_name="shop-api",route!="/healthz"}[30d])))
+      labels:
+        service: shop-api
+        slo: latency
+    - record: slo:error_budget_remaining:ratio
+      expr: 1 - (slo:sli_error:ratio_rate30d{slo="latency",service="shop-api"} / 0.01)
+      labels:
+        service: shop-api
+        slo: latency
+    - record: slo:objective:ratio
+      expr: vector(0.99)
+      labels:
+        service: shop-api
+        slo: latency
+  - name: shop-api-slo-alerts
+    rules:
+    - alert: ShopApiAvailabilityFastBurn
+      expr: slo:sli_error:ratio_rate10m{slo="availability",service="shop-api"} > 0.0144 and slo:sli_error:ratio_rate1m{slo="availability",service="shop-api"} > 0.0144
+      for: 1m
+      labels:
+        severity: page
+        slo: availability
+        service: shop-api
+        burn_window: 10m/1m
+      annotations:
+        summary: shop-api availability SLO burning 14.4x budget (10m and 1m windows)
+        description: Share of requests that do not fail with a 5xx. Error ratio exceeds 1.4400% (14.4x the allowed 0.100%) over both 10m and 1m. At this rate the 30d budget is gone in 2.1 days.
+        runbook_url: runbooks/slo-burn.md#availability-fast-burn
+        dashboard: Grafana > Shop API SLOs
+    - alert: ShopApiAvailabilitySlowBurn
+      expr: slo:sli_error:ratio_rate30m{slo="availability",service="shop-api"} > 0.003 and slo:sli_error:ratio_rate5m{slo="availability",service="shop-api"} > 0.003
+      for: 3m
+      labels:
+        severity: ticket
+        slo: availability
+        service: shop-api
+        burn_window: 30m/5m
+      annotations:
+        summary: shop-api availability SLO burning 3.0x budget (30m and 5m windows)
+        description: Share of requests that do not fail with a 5xx. Error ratio exceeds 0.3000% (3.0x the allowed 0.100%) over both 30m and 5m. At this rate the 30d budget is gone in 10.0 days.
+        runbook_url: runbooks/slo-burn.md#availability-slow-burn
+        dashboard: Grafana > Shop API SLOs
+    - alert: ShopApiLatencyFastBurn
+      expr: slo:sli_error:ratio_rate10m{slo="latency",service="shop-api"} > 0.144 and slo:sli_error:ratio_rate1m{slo="latency",service="shop-api"} > 0.144
+      for: 1m
+      labels:
+        severity: page
+        slo: latency
+        service: shop-api
+        burn_window: 10m/1m
+      annotations:
+        summary: shop-api latency SLO burning 14.4x budget (10m and 1m windows)
+        description: Share of requests served in under 500 ms. Error ratio exceeds 14.4000% (14.4x the allowed 1.000%) over both 10m and 1m. At this rate the 30d budget is gone in 2.1 days.
+        runbook_url: runbooks/slo-burn.md#latency-fast-burn
+        dashboard: Grafana > Shop API SLOs
+    - alert: ShopApiLatencySlowBurn
+      expr: slo:sli_error:ratio_rate30m{slo="latency",service="shop-api"} > 0.03 and slo:sli_error:ratio_rate5m{slo="latency",service="shop-api"} > 0.03
+      for: 3m
+      labels:
+        severity: ticket
+        slo: latency
+        service: shop-api
+        burn_window: 30m/5m
+      annotations:
+        summary: shop-api latency SLO burning 3.0x budget (30m and 5m windows)
+        description: Share of requests served in under 500 ms. Error ratio exceeds 3.0000% (3.0x the allowed 1.000%) over both 30m and 5m. At this rate the 30d budget is gone in 10.0 days.
+        runbook_url: runbooks/slo-burn.md#latency-slow-burn
+        dashboard: Grafana > Shop API SLOs

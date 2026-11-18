@@ -1,0 +1,104 @@
+# kube-prometheus-stack: HA Prometheus (2), Alertmanager (3 gossip), Grafana (2), provisioned datasources.
+fullnameOverride: kps
+
+prometheus:
+  prometheusSpec:
+    replicas: 2
+    replicaExternalLabelName: prometheus_replica   # dropped from alerts so Alertmanager de-duplicates
+    retention: 15d
+    podAntiAffinity: soft
+    podAntiAffinityTopologyKey: kubernetes.io/hostname
+    ruleSelectorNilUsesHelmValues: false           # pick up our PrometheusRule/ServiceMonitor objects
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    resources:
+      requests: {cpu: 200m, memory: 512Mi}
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources: {requests: {storage: 10Gi}}
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+alertmanager:
+  alertmanagerSpec:
+    replicas: 3
+    podAntiAffinity: soft
+    podAntiAffinityTopologyKey: kubernetes.io/hostname
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources: {requests: {storage: 1Gi}}
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: "null"
+      group_by: [alertname, slo, service]
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 4h
+      routes:
+        - matchers: ['alertname="Watchdog"']
+          receiver: "null"
+        - matchers: ['severity="page"']
+          receiver: oncall-page
+          repeat_interval: 1h
+        - matchers: ['severity="ticket"']
+          receiver: ticket-queue
+    inhibit_rules:
+      # a firing page for an SLO silences the matching ticket-level alert
+      - source_matchers: ['severity="page"']
+        target_matchers: ['severity="ticket"']
+        equal: [slo, service]
+    receivers:
+      - name: "null"
+      - name: oncall-page
+        webhook_configs:
+          - url: http://alert-sink.observability.svc:8080/page
+            send_resolved: true
+      - name: ticket-queue
+        webhook_configs:
+          - url: http://alert-sink.observability.svc:8080/ticket
+            send_resolved: true
+
+grafana:
+  replicas: 2                      # stateless: dashboards and datasources are provisioned from code
+  adminPassword: admin             # demo only - use a secret in real life
+  persistence: {enabled: false}
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://loki.observability.svc:3100
+      jsonData:
+        derivedFields:
+          - name: TraceID
+            matcherRegex: "trace_id=(\\w+)"
+            url: "$${__value.raw}"
+            datasourceUid: tempo
+    - name: Tempo
+      uid: tempo
+      type: tempo
+      access: proxy
+      url: http://tempo.observability.svc:3100
+      jsonData:
+        tracesToLogsV2:
+          datasourceUid: loki
+          spanStartTimeShift: "-5m"
+          spanEndTimeShift: "5m"
+          filterByTraceID: false
+          customQuery: true
+          query: '{service_name="shop-api"} |= "$${__trace.traceId}"'

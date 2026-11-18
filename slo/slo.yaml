@@ -1,0 +1,17 @@
+# SLO definitions. `make rules` turns this into PrometheusRule + Grafana dashboard manifests.
+service: shop-api
+namespace: observability          # where the PrometheusRule lives
+selector: 'service_name="shop-api"'
+excluded_routes: ["/healthz"]
+slos:
+  - name: availability
+    description: Share of requests that do not fail with a 5xx
+    objective: 0.999              # 99.9% over 30 days -> 43.2 min of full outage budget
+    window: 30d
+    type: availability
+  - name: latency
+    description: Share of requests served in under 500 ms
+    objective: 0.99               # 99% of requests faster than the threshold
+    window: 30d
+    type: latency
+    threshold_seconds: 0.5        # must be one of LATENCY_BUCKETS in app/metrics_names.py

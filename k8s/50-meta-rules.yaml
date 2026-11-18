@@ -1,0 +1,47 @@
+# Monitoring the monitoring: an SLO platform that fails silently is worse than none.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-meta
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: slo-platform
+spec:
+  groups:
+    - name: observability-meta
+      rules:
+        - alert: SloMetricsAbsent
+          expr: absent(app_requests_total{service_name="shop-api"})
+          for: 5m
+          labels: {severity: page, slo: telemetry, service: shop-api}
+          annotations:
+            summary: No shop-api request metrics for 5m - SLO alerts are blind
+            runbook_url: runbooks/slo-burn.md#telemetry-pipeline-alerts
+        - alert: PrometheusReplicasDegraded
+          expr: min(kube_statefulset_status_replicas_ready{statefulset=~"prometheus-.*"}) < 2
+          for: 5m
+          labels: {severity: ticket, slo: telemetry, service: observability}
+          annotations:
+            summary: Fewer than 2 Prometheus replicas ready - HA lost
+            runbook_url: runbooks/slo-burn.md#telemetry-pipeline-alerts
+        - alert: AlertmanagerClusterDegraded
+          expr: max(alertmanager_cluster_members) < 3
+          for: 5m
+          labels: {severity: page, slo: telemetry, service: observability}
+          annotations:
+            summary: Alertmanager gossip cluster has fewer than 3 members
+            runbook_url: runbooks/slo-burn.md#telemetry-pipeline-alerts
+        - alert: OtelCollectorDroppingData
+          expr: sum(rate(otelcol_exporter_send_failed_spans_total[5m])) + sum(rate(otelcol_exporter_send_failed_log_records_total[5m])) > 0
+          for: 5m
+          labels: {severity: ticket, slo: telemetry, service: observability}
+          annotations:
+            summary: Collector cannot export traces or logs to Tempo/Loki
+            runbook_url: runbooks/slo-burn.md#telemetry-pipeline-alerts
+        - alert: OtelCollectorRefusingData
+          expr: sum(rate(otelcol_receiver_refused_spans_total[5m])) + sum(rate(otelcol_receiver_refused_metric_points_total[5m])) > 0
+          for: 5m
+          labels: {severity: ticket, slo: telemetry, service: observability}
+          annotations:
+            summary: Collector is refusing incoming telemetry (memory limiter?)
+            runbook_url: runbooks/slo-burn.md#telemetry-pipeline-alerts

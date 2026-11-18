@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: loadgen}
+  template:
+    metadata:
+      labels: {app: loadgen}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001}
+      containers:
+        - name: loadgen
+          image: shop-api:0.1.0
+          imagePullPolicy: IfNotPresent
+          command: ["python", "loadgen.py"]
+          env:
+            - {name: TARGET_URL, value: "http://shop-api.shop.svc:8080"}
+            - {name: RPS, value: "20"}
+            - {name: CHECKOUT_SHARE, value: "0.5"}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
